@@ -14,11 +14,13 @@ const {UsageStatsModule} = NativeModules;
 type UsageStat = {
   packageName: string;
   totalTimeInForeground: number;
+  error: string;
 };
 
 const UsagePermissionScreen = () => {
   const [hasPermission, setHasPermission] = useState(false);
   const [usageStats, setUsageStats] = useState<UsageStat[]>([]);
+  const [currentApp, setCurrentApp] = useState<string | null>(null);
 
   const checkPermission = async () => {
     try {
@@ -30,6 +32,19 @@ const UsagePermissionScreen = () => {
   };
 
   useEffect(() => {
+    UsageStatsModule.getUsageStats()
+      .then((stats: UsageStat[]) => {
+        const sortedStats = stats.sort(
+          (a, b) => b.totalTimeInForeground - a.totalTimeInForeground,
+        );
+        setUsageStats(sortedStats);
+      })
+      .catch((error: UsageStat[]) =>
+        console.error('Error fetching usage stats', error),
+      );
+  }, []);
+
+  useEffect(() => {
     checkPermission();
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (nextAppState === 'active') {
@@ -37,6 +52,25 @@ const UsagePermissionScreen = () => {
       }
     });
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    UsageStatsModule.startBackgroundService();
+  }, []);
+
+  useEffect(() => {
+    const checkForegroundApp = () => {
+      UsageStatsModule.getForegroundApp()
+        .then((app: string) => {
+          setCurrentApp(app);
+        })
+        .catch((err: any) => console.log('Error fetching foreground app', err));
+    };
+
+    // Check every 5 seconds
+    const interval = setInterval(checkForegroundApp, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const requestPermission = () => {
@@ -70,21 +104,7 @@ const UsagePermissionScreen = () => {
       )}
       {hasPermission && (
         <View>
-          <Text style={styles.title}>App Usage Stats (Last 24h)</Text>
-          <FlatList
-            data={usageStats}
-            keyExtractor={item => item.packageName}
-            renderItem={({item}) => (
-              <View style={styles.item}>
-                <Text style={styles.appName}>{item.packageName}</Text>
-                <Text style={styles.time}>
-                  Time in foreground:{' '}
-                  {(item.totalTimeInForeground / 60000).toFixed(2)} min
-                </Text>
-              </View>
-            )}
-          />
-          <Button title="Refresh" onPress={fetchUsageStats} />
+          <Text style={styles.title}>most recent app: {currentApp}</Text>
         </View>
       )}
     </View>

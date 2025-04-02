@@ -2,6 +2,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    
 
     <application
       android:name=".MainApplication"
@@ -11,6 +12,14 @@
       android:allowBackup="false"
       android:theme="@style/AppTheme"
       android:supportsRtl="true">
+
+      <service
+        android:name=".AppUsageService"
+        android:permission="android.permission.BIND_JOB_SERVICE"
+        android:exported="false">
+      </service>
+      <receiver android:name=".AppUsageReceiver" android:exported="false"/>
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
