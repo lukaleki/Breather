@@ -1,59 +1,105 @@
 package com.breather
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
+import android.os.Handler
+import android.os.Looper
+import android.app.*
 import android.content.Intent
-import android.os.IBinder
 import android.os.Build
+import android.os.IBinder
 import android.util.Log
-import androidx.core.app.NotificationCompat
+import android.app.usage.UsageStatsManager
+import android.app.usage.UsageEvents
+import android.content.Context
+import java.util.*
 
 class AppUsageService : Service() {
 
-    private val CHANNEL_ID = "app_usage_tracking_channel" // Define your channel ID here
+    private val BLOCKED_APPS = listOf("com.google.android.youtube") // Change to the package of apps you want to override
+    private var isAppOverridden = false
 
-    override fun onCreate() {
+     override fun onCreate() {
         super.onCreate()
-        // Create the notification channel for Android 8.0 (API level 26) and above
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "App Usage Tracking",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-
-        // Log the service creation
-        Log.d("AppUsageService", "Service started")
+        startForegroundService()
     }
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        // Create the notification for the foreground service
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Tracking App Usage")
-            .setContentText("Your app is tracking usage in the background.")
-            // .setSmallIcon(R.drawable.ic_notification) // Make sure you have a valid icon here
-            .build()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Thread {
+            while (true) {
+                checkForegroundApp()
+                Thread.sleep(1000) // Check every second
+            }
+        }.start()
 
-        // Start the service in the foreground
-        startForeground(1, notification)
-
-        // Your usage tracking logic here
-        Log.d("AppUsageService", "Service running")
+         Log.d("AppUsageService", "Background service is running")
 
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent): IBinder? {
-        return null
+    private fun startForegroundService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "AppUsageServiceChannel",
+                "App Usage Service",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+
+            val notification = Notification.Builder(this, "AppUsageServiceChannel")
+                .setContentTitle("Breather is Running")
+                .setContentText("Monitoring app usage...")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .build()
+
+            startForeground(1, notification)
+        }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d("AppUsageService", "Service destroyed")
+
+    private fun checkForegroundApp() {
+    val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val endTime = System.currentTimeMillis()
+    val startTime = endTime - 5000 // Last 5 seconds
+
+    val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+    var lastApp: String? = null
+
+    val event = UsageEvents.Event()
+    while (usageEvents.hasNextEvent()) {
+        usageEvents.getNextEvent(event)
+        if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+            lastApp = event.packageName
+        }
+    }
+
+    if (lastApp == null) {
+        Log.d("AppUsageService", "No recent foreground app found")
+        return
+    }
+
+    Log.d("AppUsageService", "Detected foreground app: $lastApp")
+
+    if (BLOCKED_APPS.contains(lastApp)) {
+        Log.d("AppUsageService", "Blocked app detected: $lastApp")
+        launchBreatherApp()
+    }
+}
+
+    private fun launchBreatherApp() {
+    Log.d("AppUsageService", "Launching Breather app")
+    if (isAppOverridden) return
+    isAppOverridden = true
+
+    val intent = Intent(Intent.ACTION_MAIN)
+intent.addCategory(Intent.CATEGORY_LAUNCHER)
+intent.component = ComponentName("com.breather", "com.breather.MainActivity")
+intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+startActivity(intent)
+
+    Thread.sleep(3000) // Wait a bit before allowing another override
+    isAppOverridden = false
+}
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
     }
 }
